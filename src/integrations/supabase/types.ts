@@ -14,6 +14,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      players: {
+        Row: {
+          created_at: string
+          id: string
+          player_name: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          player_name: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          player_name?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "players_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teams: {
         Row: {
           category: Database["public"]["Enums"]["team_category"]

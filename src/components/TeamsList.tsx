@@ -1,30 +1,49 @@
 import { useEffect, useState } from "react";
-import { Users, User, Calendar, Trophy } from "lucide-react";
+import { Users, User, Calendar, Trophy, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 
 type Team = Database["public"]["Tables"]["teams"]["Row"];
+type Player = Database["public"]["Tables"]["players"]["Row"];
+
+interface TeamWithPlayers extends Team {
+  players: Player[];
+}
 
 interface TeamsListProps {
   refreshTrigger: number;
 }
 
 export function TeamsList({ refreshTrigger }: TeamsListProps) {
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamWithPlayers[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "men" | "women">("all");
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
 
   const fetchTeams = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: teamsData, error: teamsError } = await supabase
         .from("teams")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setTeams(data || []);
+      if (teamsError) throw teamsError;
+
+      const { data: playersData, error: playersError } = await supabase
+        .from("players")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (playersError) throw playersError;
+
+      const teamsWithPlayers: TeamWithPlayers[] = (teamsData || []).map((team) => ({
+        ...team,
+        players: (playersData || []).filter((player) => player.team_id === team.id),
+      }));
+
+      setTeams(teamsWithPlayers);
     } catch (error) {
       console.error("Error fetching teams:", error);
     } finally {
@@ -49,6 +68,18 @@ export function TeamsList({ refreshTrigger }: TeamsListProps) {
       day: "numeric",
       month: "short",
       year: "numeric",
+    });
+  };
+
+  const toggleExpanded = (teamId: string) => {
+    setExpandedTeams((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(teamId)) {
+        newSet.delete(teamId);
+      } else {
+        newSet.add(teamId);
+      }
+      return newSet;
     });
   };
 
@@ -124,62 +155,113 @@ export function TeamsList({ refreshTrigger }: TeamsListProps) {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredTeams.map((team, index) => (
-            <div
-              key={team.id}
-              className={cn(
-                "p-4 rounded-xl border-2 transition-all duration-200 hover:shadow-md animate-scale-in",
-                team.category === "men"
-                  ? "border-men/20 bg-men-light/50 hover:border-men/40"
-                  : "border-women/20 bg-women-light/50 hover:border-women/40"
-              )}
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 rounded-full text-xs font-semibold",
-                        team.category === "men"
-                          ? "bg-men text-primary-foreground"
-                          : "bg-women text-primary-foreground"
-                      )}
-                    >
-                      {team.category === "men" ? "Hombres" : "Mujeres"}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-foreground truncate">{team.team_name}</h3>
-                  <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <User className="w-3.5 h-3.5" />
-                      {team.person_in_charge}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {formatDate(team.created_at)}
-                    </span>
-                  </div>
-                </div>
+          {filteredTeams.map((team, index) => {
+            const isExpanded = expandedTeams.has(team.id);
+            return (
+              <div
+                key={team.id}
+                className={cn(
+                  "rounded-xl border-2 transition-all duration-200 overflow-hidden animate-scale-in",
+                  team.category === "men"
+                    ? "border-men/20 bg-men-light/50 hover:border-men/40"
+                    : "border-women/20 bg-women-light/50 hover:border-women/40"
+                )}
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
                 <div
-                  className={cn(
-                    "flex flex-col items-center justify-center px-4 py-2 rounded-xl",
-                    team.category === "men" ? "bg-men/10" : "bg-women/10"
-                  )}
+                  className="p-4 cursor-pointer"
+                  onClick={() => toggleExpanded(team.id)}
                 >
-                  <span
-                    className={cn(
-                      "font-display text-2xl",
-                      team.category === "men" ? "text-men" : "text-women"
-                    )}
-                  >
-                    {team.player_count}
-                  </span>
-                  <span className="text-xs text-muted-foreground">jugadores</span>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded-full text-xs font-semibold",
+                            team.category === "men"
+                              ? "bg-men text-primary-foreground"
+                              : "bg-women text-primary-foreground"
+                          )}
+                        >
+                          {team.category === "men" ? "Hombres" : "Mujeres"}
+                        </span>
+                      </div>
+                      <h3 className="font-semibold text-foreground truncate">{team.team_name}</h3>
+                      <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <User className="w-3.5 h-3.5" />
+                          {team.person_in_charge}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatDate(team.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex flex-col items-center justify-center px-4 py-2 rounded-xl",
+                          team.category === "men" ? "bg-men/10" : "bg-women/10"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "font-display text-2xl",
+                            team.category === "men" ? "text-men" : "text-women"
+                          )}
+                        >
+                          {team.player_count}
+                        </span>
+                        <span className="text-xs text-muted-foreground">jugadores</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        {isExpanded ? (
+                          <ChevronUp className="w-5 h-5" />
+                        ) : (
+                          <ChevronDown className="w-5 h-5" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Expanded Players List */}
+                {isExpanded && team.players.length > 0 && (
+                  <div className="px-4 pb-4 border-t border-border/50">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-3 mb-2">
+                      Lista de Jugadores
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {team.players.map((player, playerIndex) => (
+                        <div
+                          key={player.id}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg",
+                            team.category === "men" ? "bg-men/5" : "bg-women/5"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold",
+                              team.category === "men"
+                                ? "bg-men/20 text-men"
+                                : "bg-women/20 text-women"
+                            )}
+                          >
+                            {playerIndex + 1}
+                          </span>
+                          <span className="text-sm text-foreground truncate">
+                            {player.player_name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
