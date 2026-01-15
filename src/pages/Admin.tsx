@@ -13,6 +13,8 @@ import {
   User,
   ArrowLeft,
   RefreshCw,
+  Plus,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Team = Database["public"]["Tables"]["teams"]["Row"];
 type Player = Database["public"]["Tables"]["players"]["Row"];
@@ -54,6 +71,22 @@ export default function Admin() {
     id: "",
     name: "",
   });
+
+  // New team dialog
+  const [newTeamDialog, setNewTeamDialog] = useState(false);
+  const [newTeam, setNewTeam] = useState({
+    teamName: "",
+    personInCharge: "",
+    category: "men" as "men" | "women",
+  });
+
+  // Add player dialog
+  const [addPlayerDialog, setAddPlayerDialog] = useState<{ open: boolean; teamId: string; teamName: string }>({
+    open: false,
+    teamId: "",
+    teamName: "",
+  });
+  const [newPlayerName, setNewPlayerName] = useState("");
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -221,6 +254,99 @@ export default function Admin() {
     }
   };
 
+  const handleCreateTeam = async () => {
+    if (!newTeam.teamName.trim() || !newTeam.personInCharge.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor completa todos los campos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("teams").insert({
+        team_name: newTeam.teamName.trim(),
+        person_in_charge: newTeam.personInCharge.trim(),
+        category: newTeam.category,
+        player_count: 0,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Equipo creado",
+        description: `El equipo "${newTeam.teamName}" ha sido creado exitosamente.`,
+      });
+      setNewTeamDialog(false);
+      setNewTeam({ teamName: "", personInCharge: "", category: "men" });
+      fetchTeams();
+    } catch (error) {
+      console.error("Error creating team:", error);
+      toast({
+        title: "Error",
+        description: "No se pudo crear el equipo.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddPlayer = async () => {
+    if (!newPlayerName.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor ingresa el nombre del jugador.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const team = teams.find((t) => t.id === addPlayerDialog.teamId);
+    if (!team) return;
+
+    // Validar que no exceda el límite de jugadores
+    if (team.player_count >= 6) {
+      toast({
+        title: "Límite alcanzado",
+        description: "Este equipo ya tiene el máximo de 6 jugadores.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error: insertError } = await supabase.from("players").insert({
+        team_id: addPlayerDialog.teamId,
+        player_name: newPlayerName.trim(),
+      });
+
+      if (insertError) throw insertError;
+
+      // Actualizar el contador de jugadores
+      const { error: updateError } = await supabase
+        .from("teams")
+        .update({ player_count: team.player_count + 1 })
+        .eq("id", addPlayerDialog.teamId);
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: "Jugador agregado",
+        description: `${newPlayerName} ha sido agregado al equipo.`,
+      });
+      setAddPlayerDialog({ open: false, teamId: "", teamName: "" });
+      setNewPlayerName("");
+      fetchTeams();
+    } catch (error) {
+      console.error("Error adding player:", error);
+      toast({
+        title: "Error",
+        description: "No se pudo agregar el jugador.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleLogout = async () => {
     await signOut();
     navigate("/");
@@ -269,10 +395,16 @@ export default function Admin() {
       <main className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-display text-2xl text-foreground">Equipos Registrados</h2>
-          <Button variant="outline" size="sm" onClick={fetchTeams} disabled={loadingTeams}>
-            <RefreshCw className={cn("w-4 h-4 mr-2", loadingTeams && "animate-spin")} />
-            Actualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={fetchTeams} disabled={loadingTeams}>
+              <RefreshCw className={cn("w-4 h-4 mr-2", loadingTeams && "animate-spin")} />
+              Actualizar
+            </Button>
+            <Button onClick={() => setNewTeamDialog(true)} size="sm">
+              <Plus className="w-4 h-4 mr-2" />
+              Nuevo Equipo
+            </Button>
+          </div>
         </div>
 
         {loadingTeams ? (
@@ -286,13 +418,18 @@ export default function Admin() {
             <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
               <Users className="w-8 h-8 text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground">No hay equipos registrados</p>
+            <p className="text-muted-foreground mb-4">No hay equipos registrados</p>
+            <Button onClick={() => setNewTeamDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Crear primer equipo
+            </Button>
           </div>
         ) : (
           <div className="space-y-4">
             {teams.map((team) => {
               const isExpanded = expandedTeams.has(team.id);
               const isEditingThis = editingTeam === team.id;
+              const canAddPlayers = team.player_count < 6;
 
               return (
                 <div
@@ -320,7 +457,7 @@ export default function Admin() {
                             {team.category === "men" ? "Hombres" : "Mujeres"}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {team.player_count} jugadores
+                            {team.player_count} / 6 jugadores
                           </span>
                         </div>
 
@@ -376,6 +513,23 @@ export default function Admin() {
                           </>
                         ) : (
                           <>
+                            {canAddPlayers && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                onClick={() =>
+                                  setAddPlayerDialog({
+                                    open: true,
+                                    teamId: team.id,
+                                    teamName: team.team_name,
+                                  })
+                                }
+                                title="Agregar jugador"
+                              >
+                                <UserPlus className="w-4 h-4" />
+                              </Button>
+                            )}
                             <Button
                               size="icon"
                               variant="ghost"
@@ -547,6 +701,101 @@ export default function Admin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* New Team Dialog */}
+      <Dialog open={newTeamDialog} onOpenChange={setNewTeamDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Crear Nuevo Equipo</DialogTitle>
+            <DialogDescription>
+              Ingresa los datos del equipo que deseas crear.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nombre del Equipo</label>
+              <Input
+                placeholder="Ej: Los Tigres"
+                value={newTeam.teamName}
+                onChange={(e) => setNewTeam({ ...newTeam, teamName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Persona a Cargo</label>
+              <Input
+                placeholder="Ej: Juan Pérez"
+                value={newTeam.personInCharge}
+                onChange={(e) => setNewTeam({ ...newTeam, personInCharge: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Categoría</label>
+              <Select
+                value={newTeam.category}
+                onValueChange={(value: "men" | "women") =>
+                  setNewTeam({ ...newTeam, category: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="men">Hombres</SelectItem>
+                  <SelectItem value="women">Mujeres</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewTeamDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateTeam}>Crear Equipo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Player Dialog */}
+      <Dialog
+        open={addPlayerDialog.open}
+        onOpenChange={(open) => setAddPlayerDialog({ ...addPlayerDialog, open })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agregar Jugador</DialogTitle>
+            <DialogDescription>
+              Agregar un nuevo jugador al equipo "{addPlayerDialog.teamName}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nombre del Jugador</label>
+              <Input
+                placeholder="Ej: Carlos Rodríguez"
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleAddPlayer();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddPlayerDialog({ open: false, teamId: "", teamName: "" });
+                setNewPlayerName("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleAddPlayer}>Agregar Jugador</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
