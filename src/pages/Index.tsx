@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Trophy } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Trophy, Shield } from "lucide-react";
 import { TeamRegistrationForm } from "@/components/TeamRegistrationForm";
 import { TeamsList } from "@/components/TeamsList";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -13,7 +15,21 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Header */}
-      <header className="gradient-hero py-8 md:py-12 px-4">
+      <header className="gradient-hero py-8 md:py-12 px-4 relative">
+        {/* Admin Link */}
+        <div className="absolute top-4 right-4">
+          <Link to="/admin-login">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            >
+              <Shield className="w-4 h-4 mr-2" />
+              Admin
+            </Button>
+          </Link>
+        </div>
+
         <div className="container max-w-6xl mx-auto">
           <div className="flex items-center justify-center gap-4 mb-4">
             <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-primary-foreground/20 backdrop-blur-sm flex items-center justify-center">
